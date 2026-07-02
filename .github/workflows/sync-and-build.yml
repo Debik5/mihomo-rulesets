@@ -1,0 +1,125 @@
+name: Sync and Build Rule-Sets
+
+on:
+  schedule:
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  RUNETFREEDOM_GEOSITE_CATEGORIES: "private category-ru ru-available-only-inside"
+  RUNETFREEDOM_GEOIP_CATEGORIES: "ru ru-whitelist private"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Check for changes
+        id: check_changes
+        run: |
+          mkdir -p src
+          echo "[+] Скачивание исходных файлов..."
+          curl -L -o src/whitelist.txt https://raw.githubusercontent.com/hxehex/russia-mobile-internet-whitelist/main/whitelist.txt
+          curl -L -o src/geosite.dat https://raw.githubusercontent.com/runetfreedom/russia-blocked-geosite/release/geosite.dat
+          curl -L -o src/geoip.dat https://raw.githubusercontent.com/runetfreedom/russia-blocked-geoip/release/geoip.dat
+          
+          # Подсчет хэша
+          cat src/whitelist.txt src/geosite.dat src/geoip.dat | sha256sum | awk '{print $1}' > src/current_hash
+          
+          if [ -f .last-hash ] && [ "$(cat .last-hash)" = "$(cat src/current_hash)" ]; then
+            echo "changed=false" >> $GITHUB_OUTPUT
+            echo "[+] Изменений в источниках не обнаружено. Сборка не требуется."
+          else
+            echo "changed=true" >> $GITHUB_OUTPUT
+            echo "[+] Обнаружены изменения или хэш отсутствует. Запуск сборки..."
+          fi
+
+      - name: Install dependencies
+        if: steps.check_changes.outputs.changed == 'true'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y protobuf-compiler jq
+          pip install protobuf pyyaml
+
+      - name: Compile protobuf
+        if: steps.check_changes.outputs.changed == 'true'
+        run: |
+          cd scripts
+          protoc --python_out=. geosite.proto
+
+      - name: Run parsers
+        if: steps.check_changes.outputs.changed == 'true'
+        run: |
+          cd scripts
+          python3 parse_geosite.py ../src/geosite.dat $RUNETFREEDOM_GEOSITE_CATEGORIES
+          python3 parse_geoip.py ../src/geoip.dat $RUNETFREEDOM_GEOIP_CATEGORIES
+
+      - name: Install mihomo
+        if: steps.check_changes.outputs.changed == 'true'
+        run: |
+          tag=$(curl -s https://api.github.com/repos/MetaCubeX/mihomo/releases/latest | jq -r .tag_name)
+          echo "Установка mihomo версии: $tag"
+          curl -L -o mihomo.gz "https://github.com/MetaCubeX/mihomo/releases/download/${tag}/mihomo-linux-amd64-compatible-${tag}.gz"
+          gunzip -f mihomo.gz
+          chmod +x mihomo
+          sudo mv mihomo /usr/local/bin/mihomo
+
+      - name: Run build script
+        if: steps.check_changes.outputs.changed == 'true'
+        run: |
+          python3 scripts/build.py
+
+      - name: Convert rule-sets to binary format
+        if: steps.check_changes.outputs.changed == 'true'
+        run: |
+          for f in dist/*.txt; do
+            [ -e "$f" ] || continue
+            basename=$(basename "$f" .txt)
+            
+            # Определение типа поведения:
+            # файлы, в имени которых есть -ip- или имя оканчивается на -ip -> ipcidr,
+            # остальные -> domain
+            if [[ "$basename" =~ "-ip-" ]] || [[ "$basename" =~ -ip$ ]]; then
+              behavior="ipcidr"
+            else
+              behavior="domain"
+            fi
+            
+            echo "Конвертация $f в dist/$basename.mrs с типом: $behavior"
+            mihomo convert-ruleset "$behavior" text mrs "$f" "dist/$basename.mrs"
+          done
+          
+          # Удаление временных текстовых файлов
+          rm -f dist/*.txt
+
+      - name: Update snapshot and hash
+        if: steps.check_changes.outputs.changed == 'true'
+        run: |
+          mkdir -p src_snapshot
+          cp src/whitelist.txt src_snapshot/
+          cp src/geosite.dat src_snapshot/
+          cp src/geoip.dat src_snapshot/
+          mv src/current_hash .last-hash
+
+      - name: Commit and push changes
+        if: steps.check_changes.outputs.changed == 'true'
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add dist/ src_snapshot/ .last-hash
+          if git diff --cached --quiet; then
+            echo "Нет изменений для коммита."
+          else
+            git commit -m "Automated build: $(date -u +'%Y-%m-%d %H:%M:%S') UTC"
+            git push
+          fi
