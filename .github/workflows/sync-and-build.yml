@@ -96,7 +96,7 @@ jobs:
             fi
             
             echo "Конвертация $f в dist/$basename.mrs с типом: $behavior"
-            mihomo convert-ruleset "$behavior" text mrs "$f" "dist/$basename.mrs"
+            mihomo convert-ruleset "$behavior" text "$f" "dist/$basename.mrs"
           done
           
           # Удаление временных текстовых файлов
