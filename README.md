@@ -98,10 +98,3 @@ rules:
   - RULE-SET,runetfreedom-ip-private,DIRECT
 ```
 
----
-
-## Настройка автоматического обновления
-
-Для коммита результатов работы скрипта обратно в репозиторий, GitHub Actions требуются права на запись.
-
-Перейдите в **Settings -> Actions -> General -> Workflow permissions** и выберите **Read and write permissions**, после чего сохраните настройки.
