@@ -82,9 +82,14 @@ jobs:
       - name: Convert rule-sets to binary format
         if: steps.check_changes.outputs.changed == 'true'
         run: |
-          for f in dist/*.txt; do
+          for f in dist/*.yaml; do
             [ -e "$f" ] || continue
-            basename=$(basename "$f" .txt)
+            basename=$(basename "$f" .yaml)
+            
+            # Пропускаем файлы с классическими правилами (они классические, MRS их не поддерживает)
+            if [[ "$basename" =~ "-extra" ]]; then
+              continue
+            fi
             
             # Определение типа поведения:
             # файлы, в имени которых есть -ip- или имя оканчивается на -ip -> ipcidr,
@@ -96,11 +101,8 @@ jobs:
             fi
             
             echo "Конвертация $f в dist/$basename.mrs с типом: $behavior"
-            mihomo convert-ruleset "$behavior" text "$f" "dist/$basename.mrs"
+            mihomo convert-ruleset "$behavior" yaml "$f" "dist/$basename.mrs"
           done
-          
-          # Удаление временных текстовых файлов
-          rm -f dist/*.txt
 
       - name: Update snapshot and hash
         if: steps.check_changes.outputs.changed == 'true'

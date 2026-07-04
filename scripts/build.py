@@ -32,14 +32,7 @@ def write_domain_outputs(name, exact_domains=None, suffix_domains=None):
     with open(yaml_path, "w", encoding="utf-8") as f:
         yaml.safe_dump({"payload": payload}, f, default_flow_style=False, allow_unicode=True)
 
-    # Запись .txt (для mihomo convert-ruleset, все без префиксов)
-    txt_path = os.path.join(DIST_DIR, f"{name}.txt")
-    all_domains = sorted(list(set(exact + suffix)))
-    with open(txt_path, "w", encoding="utf-8") as f:
-        for d in all_domains:
-            f.write(f"{d}\n")
-
-    print(f"[+] Записаны {name}.yaml и {name}.txt (точных: {len(exact)}, суффиксов: {len(suffix)})")
+    print(f"[+] Записан {name}.yaml (точных: {len(exact)}, суффиксов: {len(suffix)})")
 
 def write_ipcidr_outputs(name, cidrs):
     sorted_cidrs = sorted(list(set(cidrs or [])))
@@ -53,13 +46,7 @@ def write_ipcidr_outputs(name, cidrs):
     with open(yaml_path, "w", encoding="utf-8") as f:
         yaml.safe_dump({"payload": sorted_cidrs}, f, default_flow_style=False, allow_unicode=True)
 
-    # Запись .txt
-    txt_path = os.path.join(DIST_DIR, f"{name}.txt")
-    with open(txt_path, "w", encoding="utf-8") as f:
-        for cidr in sorted_cidrs:
-            f.write(f"{cidr}\n")
-
-    print(f"[+] Записаны {name}.yaml и {name}.txt (IP диапазонов: {len(sorted_cidrs)})")
+    print(f"[+] Записан {name}.yaml (IP диапазонов: {len(sorted_cidrs)})")
 
 def write_classical_yaml(name, keyword_domains=None, regex_domains=None):
     keywords = sorted(list(set(keyword_domains or [])))
