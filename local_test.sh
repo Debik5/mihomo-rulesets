@@ -14,12 +14,12 @@ curl -L -o src/geosite.dat https://raw.githubusercontent.com/runetfreedom/russia
 curl -L -o src/geoip.dat https://raw.githubusercontent.com/runetfreedom/russia-blocked-geoip/release/geoip.dat
 curl -L -o src/refilter_geosite.dat https://github.com/1andrevich/Re-filter-lists/releases/latest/download/geosite.dat
 curl -L -o src/refilter_geoip.dat https://github.com/1andrevich/Re-filter-lists/releases/latest/download/geoip.dat
-if [ -f ../tranco_top_1m.zip ]; then
-    echo "[+] Копирование локального tranco_top_1m.zip..."
-    cp ../tranco_top_1m.zip src/
+if [ -f ../tranco_top_1m.csv ]; then
+    echo "[+] Копирование локального tranco_top_1m.csv..."
+    cp ../tranco_top_1m.csv src/
 else
-    echo "[+] Скачивание tranco_top_1m.zip..."
-    curl -L -o src/tranco_top_1m.zip https://tranco-list.eu/top-1m.csv.zip
+    echo "[+] Скачивание tranco_top_1m.csv..."
+    curl -L -o src/tranco_top_1m.csv https://tranco-list.eu/download/64WGX/100000
 fi
 
 echo "[+] Проверка наличия protoc..."

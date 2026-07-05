@@ -125,7 +125,7 @@ pool.Add(file_proto)
 GeoSiteList = GetMessageClass(pool.FindMessageTypeByName("geodat.GeoSiteList"))
 GeoIPList = GetMessageClass(pool.FindMessageTypeByName("geodat.GeoIPList"))
 
-def deduplicate_domains(exact_domains, suffix_domains):
+def deduplicate_domains(exact_domains, suffix_domains, sort_exact=True):
     # 1. Дедупликация суффиксов
     sorted_suffixes = sorted(list(set(suffix_domains or [])), key=len)
     unique_suffixes = set()
@@ -153,10 +153,18 @@ def deduplicate_domains(exact_domains, suffix_domains):
         if not is_redundant:
             unique_exact.add(d)
 
-    return sorted(list(unique_exact)), sorted(list(unique_suffixes))
+    if sort_exact:
+        return sorted(list(unique_exact)), sorted(list(unique_suffixes))
+    else:
+        # Сохраняем исходный порядок exact_domains (например, сортировку по Tranco)
+        ordered_exact = []
+        for d in exact_domains:
+            if d in unique_exact and d not in ordered_exact:
+                ordered_exact.append(d)
+        return ordered_exact, sorted(list(unique_suffixes))
 
-def write_domain_outputs(name, exact_domains=None, suffix_domains=None):
-    exact, suffix = deduplicate_domains(exact_domains, suffix_domains)
+def write_domain_outputs(name, exact_domains=None, suffix_domains=None, sort_exact=True):
+    exact, suffix = deduplicate_domains(exact_domains, suffix_domains, sort_exact)
 
     if not exact and not suffix:
         print(f"[!] Предупреждение: Нет доменов для {name}, файлы не будут созданы.")
@@ -446,7 +454,7 @@ def build_refilter_optimized():
     oisd_path = os.path.join(SRC_DIR, "oisd_big.txt")
     adguard_path = os.path.join(SRC_DIR, "adguard_dns.txt")
     whitelist_path = os.path.join(SRC_DIR, "whitelist.txt")
-    tranco_zip_path = os.path.join(SRC_DIR, "tranco_top_1m.zip")
+    tranco_csv_path = os.path.join(SRC_DIR, "tranco_top_1m.csv")
 
     # Проверка наличия обязательных локальных баз
     if not all(os.path.exists(p) for p in [refilter_geosite_path, refilter_geoip_path, runet_geosite_path, runet_geoip_path]):
@@ -465,7 +473,7 @@ def build_refilter_optimized():
     ensure_download("https://raw.githubusercontent.com/hagezi/dns-blocklists/main/domains/tif.txt", hagezi_path)
     ensure_download("https://big.oisd.nl/domainswild2", oisd_path)
     ensure_download("https://adguardteam.github.io/AdGuardSDNSFilter/Filters/filter.txt", adguard_path)
-    ensure_download("https://tranco-list.eu/top-1m.csv.zip", tranco_zip_path)
+    ensure_download("https://tranco-list.eu/download/64WGX/100000", tranco_csv_path)
 
     # 1. Загрузка вредоносных баз
     bad_domains = set()
@@ -565,38 +573,50 @@ def build_refilter_optimized():
         filtered_domains.append(d)
 
     # Шаг 6: Фильтрация по Tranco Top 1M
-    tranco_set = set()
-    if os.path.exists(tranco_zip_path):
-        with zipfile.ZipFile(tranco_zip_path) as z:
-            with z.open("top-1m.csv") as f:
-                for line in f:
-                    line_str = line.decode('utf-8', errors='ignore').strip()
-                    if not line_str:
+    tranco_ranks = {}
+    if os.path.exists(tranco_csv_path):
+        with open(tranco_csv_path, "r", encoding="utf-8", errors="ignore") as f:
+            for line in f:
+                line_str = line.strip()
+                if not line_str:
+                    continue
+                parts = line_str.split(',')
+                if len(parts) == 2:
+                    try:
+                        rank = int(parts[0])
+                        domain = parts[1].lower().strip()
+                        if rank <= 1000000:
+                            tranco_ranks[domain] = rank
+                    except ValueError:
                         continue
-                    parts = line_str.split(',')
-                    if len(parts) == 2:
-                        try:
-                            rank = int(parts[0])
-                            domain = parts[1].lower().strip()
-                            if rank <= 1000000:
-                                tranco_set.add(domain)
-                        except ValueError:
-                            continue
 
-    def matches_tranco(domain):
-        if domain in tranco_set:
-            return True
-        parts = domain.split('.')
-        for i in range(len(parts)):
-            suf = ".".join(parts[i:])
-            if suf in tranco_set:
-                return True
-        return False
+    def get_tranco_rank(domain):
+        candidates = [domain]
+        if domain.startswith("www."):
+            candidates.append(domain[4:])
+        else:
+            candidates.append(f"www.{domain}")
+            
+        best_rank = float('inf')
+        for cand in candidates:
+            if cand in tranco_ranks:
+                best_rank = min(best_rank, tranco_ranks[cand])
+        
+        return best_rank if best_rank != float('inf') else None
 
-    final_domains = [d for d in filtered_domains if matches_tranco(d)]
+    # Отбираем домены, которые есть в Tranco, и сохраняем их ранг
+    matched_domains = []
+    for d in filtered_domains:
+        rank = get_tranco_rank(d)
+        if rank is not None:
+            matched_domains.append((d, rank))
 
-    # Запись доменного optimized файла в dist
-    write_domain_outputs("refilter-optimized-domains", exact_domains=final_domains)
+    # Сортируем по популярности (от меньшего ранга к большему) и берем топ 100
+    matched_domains_sorted = sorted(matched_domains, key=lambda x: x[1])
+    top_100_domains = [d for d, rank in matched_domains_sorted[:100]]
+
+    # Запись доменного optimized файла в dist с алфавитной сортировкой
+    write_domain_outputs("refilter-optimized-domains", exact_domains=top_100_domains, sort_exact=True)
 
     # 6. Фильтрация IP-адресов Re-filter
     refilter_geoip = load_geoip_proto_as_ranges(refilter_geoip_path)
