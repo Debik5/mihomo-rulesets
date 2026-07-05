@@ -9,7 +9,7 @@ permissions:
   contents: write
 
 env:
-  RUNETFREEDOM_GEOSITE_CATEGORIES: "private category-ru ru-available-only-inside"
+  RUNETFREEDOM_GEOSITE_CATEGORIES: "private category-ru ru-available-only-inside ru-blocked ru-blocked-all"
   RUNETFREEDOM_GEOIP_CATEGORIES: "ru ru-whitelist private"
 
 jobs:
@@ -32,9 +32,12 @@ jobs:
           curl -L -o src/whitelist.txt https://raw.githubusercontent.com/hxehex/russia-mobile-internet-whitelist/main/whitelist.txt
           curl -L -o src/geosite.dat https://raw.githubusercontent.com/runetfreedom/russia-blocked-geosite/release/geosite.dat
           curl -L -o src/geoip.dat https://raw.githubusercontent.com/runetfreedom/russia-blocked-geoip/release/geoip.dat
+          curl -L -o src/refilter_geosite.dat https://github.com/1andrevich/Re-filter-lists/releases/latest/download/geosite.dat
+          curl -L -o src/refilter_geoip.dat https://github.com/1andrevich/Re-filter-lists/releases/latest/download/geoip.dat
+          curl -L -o src/tranco_top_1m.zip https://tranco-list.eu/top-1m.csv.zip
           
           # Подсчет хэша
-          cat src/whitelist.txt src/geosite.dat src/geoip.dat | sha256sum | awk '{print $1}' > src/current_hash
+          cat src/whitelist.txt src/geosite.dat src/geoip.dat src/refilter_geosite.dat src/refilter_geoip.dat | sha256sum | awk '{print $1}' > src/current_hash
           
           if [ -f .last-hash ] && [ "$(cat .last-hash)" = "$(cat src/current_hash)" ]; then
             echo "changed=false" >> $GITHUB_OUTPUT
@@ -94,7 +97,7 @@ jobs:
             # Определение типа поведения:
             # файлы, в имени которых есть -ip- или имя оканчивается на -ip -> ipcidr,
             # остальные -> domain
-            if [[ "$basename" =~ "-ip-" ]] || [[ "$basename" =~ -ip$ ]]; then
+            if [[ "$basename" =~ "-ip-" ]] || [[ "$basename" =~ -ip$ ]] || [[ "$basename" =~ "-ips-" ]] || [[ "$basename" =~ -ips$ ]]; then
               behavior="ipcidr"
             else
               behavior="domain"
@@ -111,6 +114,8 @@ jobs:
           cp src/whitelist.txt src_snapshot/
           cp src/geosite.dat src_snapshot/
           cp src/geoip.dat src_snapshot/
+          cp src/refilter_geosite.dat src_snapshot/
+          cp src/refilter_geoip.dat src_snapshot/
           mv src/current_hash .last-hash
 
       - name: Commit and push changes
@@ -118,7 +123,8 @@ jobs:
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git add dist/ src_snapshot/ .last-hash
+          git add -A dist/
+          git add src_snapshot/ .last-hash
           if git diff --cached --quiet; then
             echo "Нет изменений для коммита."
           else
