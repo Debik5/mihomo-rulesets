@@ -36,8 +36,7 @@ jobs:
           curl -L -o src/refilter_geoip.dat https://github.com/1andrevich/Re-filter-lists/releases/latest/download/geoip.dat
           curl -L -o src/tranco_top_1m.csv https://tranco-list.eu/download/64WGX/100000
           
-          # Подсчет хэша
-          cat src/whitelist.txt src/geosite.dat src/geoip.dat src/refilter_geosite.dat src/refilter_geoip.dat | sha256sum | awk '{print $1}' > src/current_hash
+          cat src/whitelist.txt src/geosite.dat src/geoip.dat src/refilter_geosite.dat src/refilter_geoip.dat src/tranco_top_1m.csv | sha256sum | awk '{print $1}' > src/current_hash
           
           if [ -f .last-hash ] && [ "$(cat .last-hash)" = "$(cat src/current_hash)" ]; then
             echo "changed=false" >> $GITHUB_OUTPUT
