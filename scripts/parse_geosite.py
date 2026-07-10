@@ -64,11 +64,11 @@ def parse_geosite(dat_path, categories):
                     cat_data["domain_keyword"].append(val)
                 elif d.type == 1:  # Regex
                     cat_data["domain_regex"].append(val)
-                elif d.type == 2:  # Domain (RootDomain)
-                    # Если в значении есть точка: добавляет в domain (exact)
-                    if "." in val:
-                        cat_data["domain"].append(val)
-                    # Всегда добавляет в domain_suffix с ведущей точкой (.example.com)
+                elif d.type == 2:  # Domain (RootDomain) — домен + все поддомены
+                    # Только в domain_suffix: DOMAIN-SUFFIX,example.com в mihomo
+                    # матчит сам example.com И все поддомены (*.example.com).
+                    # Дублировать в domain (exact) не нужно — это семантически неверно
+                    # и создаёт лишние записи (дедупликация потом их выбрасывает).
                     if not val.startswith("."):
                         cat_data["domain_suffix"].append(f".{val}")
                     else:

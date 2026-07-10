@@ -9,7 +9,7 @@ permissions:
   contents: write
 
 env:
-  RUNETFREEDOM_GEOSITE_CATEGORIES: "private category-ru ru-available-only-inside ru-blocked ru-blocked-all"
+  RUNETFREEDOM_GEOSITE_CATEGORIES: "private category-ru ru-available-only-inside ru-blocked ru-blocked-all category-games-!cn supercell"
   RUNETFREEDOM_GEOIP_CATEGORIES: "ru ru-whitelist private"
 
 jobs:
