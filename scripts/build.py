@@ -2,6 +2,7 @@
 import sys
 import os
 import json
+import time
 import yaml
 import shutil
 import urllib.request
@@ -18,6 +19,45 @@ REPO_ROOT = os.path.dirname(SCRIPT_DIR)
 
 DIST_DIR = os.path.join(REPO_ROOT, "dist")
 SRC_DIR = os.path.join(REPO_ROOT, "src")
+
+# ─────────────────────────────────────────────────────────────────────────────
+# КОНСТАНТЫ
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Максимальный возраст кэшированных вспомогательных файлов (hagezi, oisd, adguard).
+# Если файл старше этого порога — он будет перескачан при следующем запуске сборки.
+MAX_CACHE_AGE_DAYS = 1
+
+# Количество топовых доменов в refilter-optimized (по рейтингу Tranco).
+# Меньше = быстрее матчинг правил в mihomo, больше = полнее покрытие.
+TOP_REFILTER_DOMAINS = 100
+
+# ─────────────────────────────────────────────────────────────────────────────
+# CUSTOM_DOMAIN_RULESETS — декларативный список кастомных категорий
+# ─────────────────────────────────────────────────────────────────────────────
+# Каждый элемент описывает один выходной файл в dist/:
+#
+#   output  — имя выходного файла (без расширения .yaml/.mrs)
+#   source  — имя JSON в src/runetfreedom/ (без .json), из которого берутся домены
+#   exclude — список имён JSON в src/runetfreedom/ для вычитания (без .json)
+#
+# Как добавить новую категорию:
+#   1. Убедись что категория есть в RUNETFREEDOM_GEOSITE_CATEGORIES в local_test.sh
+#      и sync-and-build.yml — чтобы parse_geosite.py извлёк её из geosite.dat.
+#   2. Добавь строку в список ниже.
+#   3. Добавь rule-provider и правило в clashmeta-generator.py.
+#
+# Пример:
+#   {"output": "runetfreedom-streaming", "source": "category-streaming", "exclude": []},
+# ─────────────────────────────────────────────────────────────────────────────
+CUSTOM_DOMAIN_RULESETS = [
+    {
+        "output":  "runetfreedom-category-games",  # dist/runetfreedom-category-games.yaml
+        "source":  "category-games-!cn",            # src/runetfreedom/category-games-!cn.json
+        "exclude": ["supercell"],                   # вычесть src/runetfreedom/supercell.json
+    },
+    # Добавляй новые категории сюда ↓
+]
 
 # Очистка и пересоздание директории dist перед сборкой
 if os.path.exists(DIST_DIR):
@@ -245,12 +285,12 @@ def build_runetfreedom_categories():
                 continue
             json_path = os.path.join(rf_dir, filename)
             
-            with open(json_path, "r", encoding="utf-8") as f:
-                try:
+            try:
+                with open(json_path, "r", encoding="utf-8") as f:
                     data = json.load(f)
-                except Exception as e:
-                    print(f"[-] Ошибка при чтении {json_path}: {e}")
-                    continue
+            except Exception as e:
+                print(f"[-] Ошибка при чтении {json_path}: {e}")
+                continue
 
             rules = data.get("rules", [])
             exact_domains = []
@@ -306,12 +346,12 @@ def build_runetfreedom_ip_categories():
             category = filename[:-5]
             json_path = os.path.join(rf_ip_dir, filename)
 
-            with open(json_path, "r", encoding="utf-8") as f:
-                try:
+            try:
+                with open(json_path, "r", encoding="utf-8") as f:
                     data = json.load(f)
-                except Exception as e:
-                    print(f"[-] Ошибка при чтении {json_path}: {e}")
-                    continue
+            except Exception as e:
+                print(f"[-] Ошибка при чтении {json_path}: {e}")
+                continue
 
             ip_cidr = data.get("ip_cidr", [])
             
@@ -397,16 +437,17 @@ def range_overlaps_any(target_range, grouped_v4, grouped_v6):
                         return True
         return False
 
-def format_range_to_cidr(r):
-    start, end, is_ipv6 = r
-    diff = end - start + 1
-    bits = 128 if is_ipv6 else 32
-    prefix = bits
-    while diff > 1:
-        diff >>= 1
-        prefix -= 1
-    ip_obj = ipaddress.ip_address(start)
-    return f"{ip_obj}/{prefix}"
+def format_range_to_cidrs(r):
+    """Конвертирует IP-диапазон (start, end, is_ipv6) в список CIDR-строк.
+
+    Использует ipaddress.summarize_address_range() вместо ручного вычисления,
+    что корректно обрабатывает любые диапазоны, включая нестандартные
+    (не кратные степени двойки).
+    """
+    start, end, _ = r
+    start_addr = ipaddress.ip_address(start)
+    end_addr   = ipaddress.ip_address(end)
+    return [str(net) for net in ipaddress.summarize_address_range(start_addr, end_addr)]
 
 def parse_adguard(filepath):
     domains = set()
@@ -461,9 +502,16 @@ def build_refilter_optimized():
         print("[!] Пропуск сборки refilter-optimized: не все исходные .dat файлы найдены.")
         return
 
-    # Скачивание вспомогательных баз блокировок в src/ если отсутствуют
+    # Скачивание вспомогательных баз блокировок в src/.
+    # Файл перескачивается если он отсутствует ИЛИ старше MAX_CACHE_AGE_DAYS суток.
     def ensure_download(url, path):
-        if not os.path.exists(path):
+        needs_download = not os.path.exists(path)
+        if not needs_download:
+            age_days = (time.time() - os.path.getmtime(path)) / 86400
+            if age_days > MAX_CACHE_AGE_DAYS:
+                print(f"[+] {os.path.basename(path)} устарел ({age_days:.1f} д.), обновление...")
+                needs_download = True
+        if needs_download:
             print(f"[+] Скачивание {url}...")
             try:
                 urllib.request.urlretrieve(url, path)
@@ -611,12 +659,12 @@ def build_refilter_optimized():
         if rank is not None:
             matched_domains.append((d, rank))
 
-    # Сортируем по популярности (от меньшего ранга к большему) и берем топ 100
+    # Сортируем по популярности (от меньшего ранга к большему) и берём топ TOP_REFILTER_DOMAINS.
     matched_domains_sorted = sorted(matched_domains, key=lambda x: x[1])
-    top_100_domains = [d for d, rank in matched_domains_sorted[:100]]
+    top_domains = [d for d, rank in matched_domains_sorted[:TOP_REFILTER_DOMAINS]]
 
     # Запись доменного optimized файла в dist с алфавитной сортировкой
-    write_domain_outputs("refilter-optimized-domains", exact_domains=top_100_domains, sort_exact=True)
+    write_domain_outputs("refilter-optimized-domains", exact_domains=top_domains, sort_exact=True)
 
     # 6. Фильтрация IP-адресов Re-filter
     refilter_geoip = load_geoip_proto_as_ranges(refilter_geoip_path)
@@ -644,14 +692,92 @@ def build_refilter_optimized():
             continue
         final_ips.append(r)
 
-    # Перевод в CIDR формат и запись в dist
-    final_ips_cidr = [format_range_to_cidr(r) for r in final_ips]
+    # Перевод в CIDR формат и запись в dist.
+    # format_range_to_cidrs() возвращает список (один диапазон может давать несколько CIDR),
+    # поэтому используем extend вместо append.
+    final_ips_cidr = []
+    for r in final_ips:
+        final_ips_cidr.extend(format_range_to_cidrs(r))
     write_ipcidr_outputs("refilter-optimized-ips", final_ips_cidr)
+
+
+def build_custom_rulesets():
+    """
+    Обрабатывает декларативный список CUSTOM_DOMAIN_RULESETS.
+
+    Для каждой записи:
+      1. Загружает source JSON из src/runetfreedom/.
+      2. Загружает все exclude JSON и собирает множества доменов для вычитания.
+      3. Фильтрует домены источника, убирая те что есть в исключениях.
+      4. Записывает результат через write_domain_outputs().
+
+    Чтобы добавить новую категорию — добавь запись в CUSTOM_DOMAIN_RULESETS вверху файла.
+    """
+    if not CUSTOM_DOMAIN_RULESETS:
+        return
+
+    print("[+] Сборка кастомных категорий из CUSTOM_DOMAIN_RULESETS...")
+
+    for ruleset in CUSTOM_DOMAIN_RULESETS:
+        output  = ruleset["output"]
+        source  = ruleset["source"]
+        exclude = ruleset.get("exclude", [])
+
+        source_path = os.path.join(SRC_DIR, "runetfreedom", f"{source}.json")
+        if not os.path.exists(source_path):
+            print(f"[!] Предупреждение: {source}.json не найден, пропуск {output}.")
+            continue
+
+        try:
+            with open(source_path, "r", encoding="utf-8") as f:
+                src_data = json.load(f)
+        except Exception as e:
+            print(f"[-] Ошибка чтения {source_path}: {e}")
+            continue
+
+        # Сбор доменов для вычитания из всех exclude-файлов
+        exclude_exact  = set()
+        exclude_suffix = set()
+        for ex_name in exclude:
+            ex_path = os.path.join(SRC_DIR, "runetfreedom", f"{ex_name}.json")
+            if not os.path.exists(ex_path):
+                print(f"[!] Предупреждение: файл исключения {ex_name}.json не найден, пропуск.")
+                continue
+            try:
+                with open(ex_path, "r", encoding="utf-8") as f:
+                    ex_data = json.load(f)
+            except Exception as e:
+                print(f"[-] Ошибка чтения {ex_path}: {e}")
+                continue
+            for r in ex_data.get("rules", []):
+                for d in r.get("domain", []):
+                    exclude_exact.add(d.lower())
+                for d in r.get("domain_suffix", []):
+                    exclude_suffix.add(d.lstrip(".").lower())
+
+        # Фильтрация: вычитаем exclude-домены из источника
+        exact_out  = []
+        suffix_out = []
+        for r in src_data.get("rules", []):
+            for d in r.get("domain", []):
+                if d.lower() not in exclude_exact:
+                    exact_out.append(d)
+            for d in r.get("domain_suffix", []):
+                cleaned = d.lstrip(".")
+                if cleaned.lower() not in exclude_suffix:
+                    suffix_out.append(cleaned)
+
+        if not exact_out and not suffix_out:
+            print(f"[!] Предупреждение: после фильтрации {output} пуст.")
+            continue
+
+        write_domain_outputs(output, exact_domains=exact_out, suffix_domains=suffix_out)
 
 def main():
     print("[+] Начало генерации файлов в dist/...")
     build_own_whitelist()
     build_runetfreedom_categories()
+    build_custom_rulesets()
     build_refilter_optimized()
     build_runetfreedom_ip_categories()
     print("[+] Генерация файлов успешно завершена!")
