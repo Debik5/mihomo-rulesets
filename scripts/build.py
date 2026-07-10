@@ -278,10 +278,18 @@ def build_runetfreedom_categories():
         print(f"[!] Предупреждение: Директория {rf_dir} не найдена. Пропуск geosite категорий.")
         return
 
+    # Собираем категории, которые не нужно выводить как самостоятельные списки:
+    # 1. Захардкоженные (ru-blocked, ru-blocked-all)
+    # 2. Те, которые используются как "source" или "exclude" в CUSTOM_DOMAIN_RULESETS
+    skip_categories = {"ru-blocked", "ru-blocked-all"}
+    for rule in CUSTOM_DOMAIN_RULESETS:
+        skip_categories.add(rule["source"])
+        skip_categories.update(rule.get("exclude", []))
+
     for filename in os.listdir(rf_dir):
         if filename.endswith(".json"):
             category = filename[:-5]
-            if category in ["ru-blocked", "ru-blocked-all"]:
+            if category in skip_categories:
                 continue
             json_path = os.path.join(rf_dir, filename)
             
