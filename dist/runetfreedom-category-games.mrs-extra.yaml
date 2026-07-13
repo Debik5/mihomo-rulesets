@@ -1,0 +1,6 @@
+# mrs-extra.yaml — правила, которые не поддерживает формат MRS
+# Можно использовать как classical payload или inline.
+payload:
+  - DOMAIN-REGEX:^cdn\d-epicgames-\d+\.file\.myqcloud\.com$
+  - DOMAIN-REGEX:^epicgames-download\d-\d+\.file\.myqcloud\.com$
+  - DOMAIN-REGEX:^epicgames-download\d\.akamaized\.net$
