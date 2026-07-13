@@ -10,7 +10,11 @@
 2. **geosite.dat** — категории `private`, `category-ru`, `ru-available-only-inside`, `category-games-!cn`, `supercell` из репозитория [russia-blocked-geosite](https://github.com/runetfreedom/russia-blocked-geosite).
 3. **geoip.dat** — категории `ru`, `ru-whitelist`, `private` из репозитория [russia-blocked-geoip](https://github.com/runetfreedom/russia-blocked-geoip).
 4. **Re-filter** — базы доменов и IP из проекта [Re-filter-lists](https://github.com/1andrevich/Re-filter-lists).
-5. **Tranco** — топ-100 000 популярных доменов для оптимизации списков обхода.
+5. **Tranco** — топ-100 000 популярных доменов для оптимизации списков обхода из [Tranco List](https://tranco-list.eu/).
+6. **HaGeZi TIF** — список вредоносных доменов из репозитория [dns-blocklists](https://github.com/hagezi/dns-blocklists) (используется для фильтрации).
+7. **OISD** — список рекламы и трекеров [OISD Big](https://oisd.nl/) (используется для фильтрации).
+8. **AdGuard DNS Filter** — список блокировки рекламы [AdGuard SDNS Filter](https://github.com/AdguardTeam/AdguardSDNSFilter) (используется для фильтрации).
+
 
 ---
 
