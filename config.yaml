@@ -1,0 +1,137 @@
+version: 1
+
+output_dir: dist
+
+cache:
+  dir: .cache
+  force_update: false
+
+limits:
+  max_rules: 10000000
+  max_concurrent_downloads: 6
+
+# =============================================================================
+# ИСТОЧНИКИ (sources)
+# =============================================================================
+sources:
+  # 1. Белый список доменов
+  whitelist:
+    url: https://raw.githubusercontent.com/hxehex/russia-mobile-internet-whitelist/main/whitelist.txt
+    format: text
+
+  # 2. Runetfreedom geosite (домены)
+  geosite:
+    url: https://raw.githubusercontent.com/runetfreedom/russia-blocked-geosite/release/geosite.dat
+    format: dat
+    categories:
+      - name: category-ru
+      - name: private
+      - name: ru-available-only-inside
+      - name: category-games-!cn
+      - name: supercell
+
+  # 3. Runetfreedom geoip (IP-адреса)
+  geoip:
+    url: https://raw.githubusercontent.com/runetfreedom/russia-blocked-geoip/release/geoip.dat
+    format: dat
+    categories:
+      - name: ru
+      - name: ru-whitelist
+      - name: private
+
+  # 4. Re-filter geosite
+  refilter-geosite:
+    url: https://github.com/1andrevich/Re-filter-lists/releases/latest/download/geosite.dat
+    format: dat
+    category: refilter
+
+  # 5. Re-filter geoip
+  refilter-geoip:
+    url: https://github.com/1andrevich/Re-filter-lists/releases/latest/download/geoip.dat
+    format: dat
+    category: refilter
+
+  # 6. Threat Intelligence (вредоносные домены)
+  hagezi:
+    url: https://raw.githubusercontent.com/hagezi/dns-blocklists/main/domains/tif.txt
+    format: text
+
+  # 7. OISD (реклама / телеметрия)
+  oisd:
+    url: https://big.oisd.nl/domainswild2
+    format: text
+
+  # 8. AdGuard (реклама)
+  adguard:
+    url: https://adguardteam.github.io/AdGuardSDNSFilter/Filters/filter.txt
+    format: abp
+
+  # 9. Tranco (рейтинг популярности доменов в мире)
+  tranco:
+    url: https://tranco-list.eu/download/64WGX/100000
+    format: csv
+    csv:
+      column: 2
+      has_header: false
+      delimiter: ","
+
+# =============================================================================
+# ВЫХОДНЫЕ ФАЙЛЫ (outputs)
+# =============================================================================
+outputs:
+  # --- ДОМЕННЫЕ СПИСКИ ---
+
+  - name: ru-whitelist-domains
+    behavior: domain
+    formats: [mrs, yaml, srs]
+    logic: "whitelist"
+
+  - name: runetfreedom-ru-domains
+    behavior: domain
+    formats: [mrs, yaml, srs]
+    logic: "geosite.category-ru"
+
+  - name: runetfreedom-private-domains
+    behavior: domain
+    formats: [mrs, yaml, srs]
+    logic: "geosite.private"
+
+  - name: runetfreedom-ru-available-only-inside
+    behavior: domain
+    formats: [mrs, yaml, srs]
+    logic: "geosite.ru-available-only-inside"
+
+  - name: runetfreedom-category-games
+    behavior: domain
+    formats: [mrs, yaml, srs]
+    logic: "geosite.category-games-!cn - geosite.supercell"
+
+  - name: refilter-optimized-domains
+    behavior: domain
+    formats: [mrs, yaml, srs]
+    # Логика: берём список Tranco (сохраняя его порядок популярности), и пересекаем его с отфильтрованной базой.
+    logic: "tranco & ((refilter-geosite.refilter & geosite.category-ru) - (hagezi | oisd | adguard | geosite.private | geosite.ru-available-only-inside | whitelist))"
+    # Обрезаем результат до Топ-100 (как в оригинальном python скрипте 'TOP_REFILTER_DOMAINS = 100')
+    cut: 100
+
+  # --- СПИСКИ IP-АДРЕСОВ ---
+
+  - name: refilter-optimized-ips
+    behavior: ipcidr
+    formats: [mrs, yaml, srs]
+    logic: "(refilter-geoip.refilter & geoip.ru) - (geoip.private | geoip.ru-whitelist)"
+
+  - name: runetfreedom-ru-ips
+    behavior: ipcidr
+    formats: [mrs, yaml, srs]
+    logic: "geoip.ru"
+
+  - name: ru-whitelist-ips
+    behavior: ipcidr
+    formats: [mrs, yaml, srs]
+    logic: "geoip.ru-whitelist"
+
+  - name: runetfreedom-private-ips
+    behavior: ipcidr
+    formats: [mrs, yaml, srs]
+    logic: "geoip.private"
