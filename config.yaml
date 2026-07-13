@@ -109,10 +109,7 @@ outputs:
   - name: refilter-optimized-domains
     behavior: domain
     formats: [mrs, yaml, srs]
-    # Логика: берём список Tranco (сохраняя его порядок популярности), и пересекаем его с отфильтрованной базой.
     logic: "tranco & ((refilter-geosite.refilter & geosite.category-ru) - (hagezi | oisd | adguard | geosite.private | geosite.ru-available-only-inside | whitelist))"
-    # Обрезаем результат до Топ-100 (как в оригинальном python скрипте 'TOP_REFILTER_DOMAINS = 100')
-    cut: 100
 
   # --- СПИСКИ IP-АДРЕСОВ ---
 
