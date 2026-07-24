@@ -148,6 +148,7 @@ payload:
   - +.id.tbank.ru
   - +.id.vk.ru
   - +.imgproxy.cdn-tinkoff.ru
+  - +.imgsmail.ru
   - +.imperia.mail.ru
   - +.infra.mail.ru
   - +.internet.mail.ru
@@ -292,6 +293,7 @@ payload:
   - +.souz.mail.ru
   - +.sphere.mail.ru
   - +.sport.mail.ru
+  - +.sportmail.ru
   - +.sso-app4.vtb.ru
   - +.sso-app5.vtb.ru
   - +.sso.kinopoisk.ru
